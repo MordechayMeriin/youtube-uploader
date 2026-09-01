@@ -37,11 +37,16 @@ _AUDIO_STREAM_RE = re.compile(r"^\s*Stream #\d+:\d+.*?: Audio: ", re.M)
 _OUT_TIME_RE = re.compile(r"^out_time=(\d+):(\d\d):(\d\d(?:\.\d+)?)")
 
 # `split` is required -- a filter output cannot be consumed by two filters.
+#
+# The foreground is scaled down to fit the frame if it's larger, but never scaled up if
+# it's smaller -- clamping the target box to the source's own size (via if(gt(...))) turns
+# `decrease` from "fit to exactly WIDTHxHEIGHT" into "fit, but don't upscale".
 _BACKGROUND_FILTER = (
     "[0:v]split=2[wide][fit];"
     f"[wide]scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,"
     f"crop={WIDTH}:{HEIGHT},gblur=sigma={BLUR_SIGMA},eq=brightness=-{BACKGROUND_DIM}[bg];"
-    f"[fit]scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=decrease[fg];"
+    f"[fit]scale=w='if(gt(iw,{WIDTH}),{WIDTH},iw)':h='if(gt(ih,{HEIGHT}),{HEIGHT},ih)':"
+    "force_original_aspect_ratio=decrease[fg];"
     "[bg][fg]overlay=(W-w)/2:(H-h)/2"
 )
 
