@@ -7,6 +7,7 @@ survives being replaced by a newer build.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import tempfile
@@ -19,6 +20,7 @@ APP_NAME = "AudioToVideo"
 SOURCE_NAME = "source_image.png"
 BACKGROUND_NAME = "background.png"
 THUMB_NAME = "thumbnail.png"
+SETTINGS_NAME = "settings.json"
 
 
 def directory() -> Path:
@@ -26,6 +28,46 @@ def directory() -> Path:
     root = Path(base) if base else Path.home() / ".config"
     path = root / APP_NAME
     path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def default_output_directory() -> Path:
+    """Where videos land unless the user has picked somewhere else."""
+    docs = os.environ.get("USERPROFILE")
+    root = Path(docs) / "Documents" if docs else Path.home() / "Documents"
+    return root / APP_NAME
+
+
+def _settings() -> dict:
+    path = directory() / SETTINGS_NAME
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_settings(data: dict) -> None:
+    path = directory() / SETTINGS_NAME
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def output_directory() -> Path:
+    """The folder videos are saved into, created on demand."""
+    saved = _settings().get("output_directory")
+    path = Path(saved) if saved else default_output_directory()
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def set_output_directory(path) -> Path:
+    """Remember a new output folder, creating it if needed."""
+    path = Path(path)
+    path.mkdir(parents=True, exist_ok=True)
+    settings = _settings()
+    settings["output_directory"] = str(path)
+    _save_settings(settings)
     return path
 
 

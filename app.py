@@ -33,6 +33,11 @@ NO_AUDIO = "No audio chosen yet"
 MUTED = "#666666"
 
 
+def output_path(audio: Path) -> Path:
+    """Where the finished video for this audio file should be written."""
+    return config.output_directory() / audio.with_suffix(".mp4").name
+
+
 def unique(path: Path) -> Path:
     """A path that does not exist yet, so we never silently overwrite an earlier video."""
     if not path.exists():
@@ -100,6 +105,17 @@ class App(tk.Tk):
         self.preview.grid(sticky="ew", ipady=30)
         ttk.Button(frame, text="Choose image...", command=self._pick_image).grid(
             sticky="ew", pady=(6, 16)
+        )
+
+        ttk.Separator(frame).grid(sticky="ew", pady=(0, 16))
+
+        ttk.Label(frame, text="Save videos to", font=("", 10, "bold")).grid(sticky="w")
+        self.output_label = ttk.Label(
+            frame, text=str(config.output_directory()), foreground=MUTED, wraplength=380
+        )
+        self.output_label.grid(sticky="w", pady=(0, 6))
+        ttk.Button(frame, text="Change folder...", command=self._pick_output_dir).grid(
+            sticky="ew", pady=(0, 16)
         )
 
         ttk.Separator(frame).grid(sticky="ew", pady=(0, 16))
@@ -184,6 +200,16 @@ class App(tk.Tk):
         if chosen:
             self._accept_audio(Path(chosen))
 
+    def _pick_output_dir(self) -> None:
+        chosen = filedialog.askdirectory(
+            title="Choose a folder for finished videos",
+            initialdir=str(config.output_directory()),
+        )
+        if not chosen:
+            return
+        path = config.set_output_directory(chosen)
+        self.output_label.configure(text=str(path))
+
     def _start(self) -> None:
         if not self.audio:
             return
@@ -200,7 +226,7 @@ class App(tk.Tk):
             if not has_audio:
                 self.events.put(("error", "That file has no audio track in it."))
                 return
-            dest = unique(audio.with_suffix(".mp4"))
+            dest = unique(output_path(audio))
             self.events.put(("stage", f"Encoding {dest.name}"))
             media.convert(
                 audio,
