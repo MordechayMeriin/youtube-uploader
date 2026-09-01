@@ -4,12 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-"Audio to Video" — a small Windows desktop app (Tkinter GUI). Pick an image once, then
-turn any audio file into an MP4 that displays that image for the whole track, ready to
-upload to YouTube manually. There is deliberately no YouTube upload feature: videos
-uploaded via the YouTube Data API from an unverified API project are locked private by
-YouTube with no way to appeal, so an automatic uploader would produce unpublishable
-videos.
+"Audio to Video" — a small Windows desktop app (Tkinter GUI). Add one or more images, pick
+which one is active, then turn any audio file into an MP4 that displays the active image
+for the whole track, ready to upload to YouTube manually. There is deliberately no YouTube
+upload feature: videos uploaded via the YouTube Data API from an unverified API project are
+locked private by YouTube with no way to appeal, so an automatic uploader would produce
+unpublishable videos.
 
 ## Commands
 
@@ -46,9 +46,9 @@ Four files, each with one job:
   the background frame, encoding the final video. Uses `ffmpeg -i` output parsing instead of
   `ffprobe`, because the bundled ffmpeg build ships as a single binary with no ffprobe
   alongside it.
-- **`config.py`** — persists the chosen image between runs in `%APPDATA%\AudioToVideo` (not
-  next to the exe), so the app survives being replaced by a newer build and still works from
-  a read-only install folder.
+- **`config.py`** — persists the list of added images (each with its own pre-rendered
+  background + thumbnail) and which one is currently selected, in `%APPDATA%\AudioToVideo`
+  (not next to the exe, so a newer build or a read-only install folder still works).
 - **`build.py`** — drives PyInstaller to produce `dist\AudioToVideo\`.
 
 ### The key design decision: pre-render the background once
@@ -59,15 +59,18 @@ leftover space is filled with a blurred, darkened copy of the same image (see
 is cropped.
 
 This blur/composite filter graph is the most expensive ffmpeg operation in the app, so it
-runs exactly once, when the user picks an image (`config.set_image` → `media.build_background`)
-— never per conversion. Each video conversion (`media.convert`) just loops the pre-rendered
-background PNG for the audio's duration and muxes in the audio; that's why conversions are
-fast even though picking a new image is not. When touching either of these paths, preserve
-this split — don't fold background rendering back into the per-conversion path.
+runs exactly once per image, when the user adds it (`config.add_image` → `media.build_background`)
+— never per conversion. Each video conversion (`media.convert`) just loops the selected
+image's pre-rendered background PNG for the audio's duration and muxes in the audio; that's
+why conversions are fast even though adding a new image is not. When touching either of
+these paths, preserve this split — don't fold background rendering back into the
+per-conversion path.
 
-`config.set_image` renders everything into a temp staging directory first and only copies
-into the real `%APPDATA%` directory once every step succeeds, so a bad image can't clobber a
-previously working setup.
+`config.add_image` renders everything into a temp staging directory first and only copies
+into the real `%APPDATA%` directory (under its own `images/<id>/` subfolder) once every step
+succeeds, so a bad image can't clobber a previously working one. `images.json` in that same
+directory lists every added image and records which id is currently selected;
+`config.selected()` is what `app.py` reads before starting a conversion.
 
 ### ffmpeg binary resolution (`media.ffmpeg_exe`)
 

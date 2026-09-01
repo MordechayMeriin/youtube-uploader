@@ -1,8 +1,8 @@
 """Audio to Video -- a small desktop app.
 
-Pick an image once, then turn any audio file into an MP4 that shows that image for the
-whole track. The heavy work happens on a worker thread and reports back through a queue,
-so the window keeps repainting while ffmpeg runs.
+Add one or more images, pick which one is active, then turn any audio file into an MP4
+that shows the active image for the whole track. The heavy work happens on a worker
+thread and reports back through a queue, so the window keeps repainting while ffmpeg runs.
 """
 
 from __future__ import annotations
@@ -65,12 +65,13 @@ class App(tk.Tk):
 
         self.audio: Path | None = None
         self.result: Path | None = None
+        self.images: list[config.ImageEntry] = []
         self.events: queue.Queue = queue.Queue()
         self.thumb: tk.PhotoImage | None = None  # a live reference, or Tk discards it
         self._tick: str | None = None
 
         self._build()
-        self._show_image()
+        self._refresh_images()
         if audio:
             self._accept_audio(Path(audio))
         self._tick = self.after(100, self._drain)
@@ -89,17 +90,35 @@ class App(tk.Tk):
         frame = ttk.Frame(self, padding=16)
         frame.grid(sticky="nsew")
 
-        ttk.Label(frame, text="Image", font=("", 10, "bold")).grid(sticky="w")
+        ttk.Label(frame, text="Images", font=("", 10, "bold")).grid(sticky="w")
         ttk.Label(
-            frame, text="Used for every video until you change it.", foreground=MUTED
+            frame, text="Add one or more; pick which one to use below.", foreground=MUTED
         ).grid(sticky="w", pady=(0, 6))
 
         self.preview = ttk.Label(
             frame, text=NO_IMAGE, relief="solid", borderwidth=1, anchor="center", width=44
         )
         self.preview.grid(sticky="ew", ipady=30)
-        ttk.Button(frame, text="Choose image...", command=self._pick_image).grid(
-            sticky="ew", pady=(6, 16)
+
+        list_frame = ttk.Frame(frame)
+        list_frame.grid(sticky="ew", pady=(6, 0))
+        list_frame.columnconfigure(0, weight=1)
+        self.image_list = tk.Listbox(list_frame, height=4, exportselection=False)
+        self.image_list.grid(row=0, column=0, sticky="ew")
+        self.image_list.bind("<<ListboxSelect>>", self._on_image_select)
+        list_scroll = ttk.Scrollbar(list_frame, orient="vertical", command=self.image_list.yview)
+        list_scroll.grid(row=0, column=1, sticky="ns")
+        self.image_list.configure(yscrollcommand=list_scroll.set)
+
+        image_buttons = ttk.Frame(frame)
+        image_buttons.grid(sticky="ew", pady=(6, 16))
+        image_buttons.columnconfigure(0, weight=1)
+        image_buttons.columnconfigure(1, weight=1)
+        ttk.Button(image_buttons, text="Add image...", command=self._pick_image).grid(
+            row=0, column=0, sticky="ew", padx=(0, 4)
+        )
+        ttk.Button(image_buttons, text="Remove", command=self._remove_image).grid(
+            row=0, column=1, sticky="ew", padx=(4, 0)
         )
 
         ttk.Separator(frame).grid(sticky="ew", pady=(0, 16))
@@ -128,15 +147,31 @@ class App(tk.Tk):
 
     # -- state -----------------------------------------------------------------
 
-    def _show_image(self) -> None:
-        thumb = config.thumbnail()
-        if not thumb:
+    def _refresh_images(self) -> None:
+        self.images = config.list_images()
+        self.image_list.delete(0, tk.END)
+        for entry in self.images:
+            self.image_list.insert(tk.END, entry.name)
+
+        selected_id = config.selected_id()
+        self.image_list.selection_clear(0, tk.END)
+        for i, entry in enumerate(self.images):
+            if entry.id == selected_id:
+                self.image_list.selection_set(i)
+                self.image_list.activate(i)
+                break
+
+        self._show_selected_preview()
+        self._refresh_go()
+
+    def _show_selected_preview(self) -> None:
+        entry = config.selected()
+        if entry is None:
             self.preview.configure(text=NO_IMAGE, image="")
             self.thumb = None
         else:
-            self.thumb = tk.PhotoImage(file=str(thumb))
+            self.thumb = tk.PhotoImage(file=str(entry.thumbnail))
             self.preview.configure(image=self.thumb, text="")
-        self._refresh_go()
 
     def _accept_audio(self, path: Path) -> None:
         self.audio = path
@@ -144,10 +179,10 @@ class App(tk.Tk):
         self._refresh_go()
 
     def _refresh_go(self) -> None:
-        has_image = config.background() is not None
+        has_image = config.selected_id() is not None
         self.go.configure(state="normal" if (self.audio and has_image) else "disabled")
         if not has_image:
-            self.status.configure(text="Choose an image to get started.")
+            self.status.configure(text="Add an image to get started.")
         elif not self.audio:
             self.status.configure(text="Choose an audio file.")
 
@@ -169,15 +204,35 @@ class App(tk.Tk):
         self.status.configure(text="Preparing image...")
         self.update_idletasks()
         try:
-            config.set_image(chosen)
+            entry = config.add_image(chosen)
         except media.MediaError as exc:
             messagebox.showerror(
                 "Audio to Video", f"That file could not be read as an image.\n\n{exc}"
             )
             self.status.configure(text="")
             return
-        self._show_image()
-        self.status.configure(text="Image saved.")
+        config.set_selected(entry.id)
+        self._refresh_images()
+        self.status.configure(text="Image added.")
+
+    def _remove_image(self) -> None:
+        selection = self.image_list.curselection()
+        if not selection:
+            return
+        entry = self.images[selection[0]]
+        if not messagebox.askyesno("Audio to Video", f'Remove "{entry.name}"?'):
+            return
+        config.remove_image(entry.id)
+        self._refresh_images()
+
+    def _on_image_select(self, event) -> None:
+        selection = self.image_list.curselection()
+        if not selection:
+            return
+        entry = self.images[selection[0]]
+        config.set_selected(entry.id)
+        self._show_selected_preview()
+        self._refresh_go()
 
     def _pick_audio(self) -> None:
         chosen = filedialog.askopenfilename(title="Choose an audio file", filetypes=AUDIO_TYPES)
@@ -187,15 +242,19 @@ class App(tk.Tk):
     def _start(self) -> None:
         if not self.audio:
             return
+        entry = config.selected()
+        if entry is None:
+            return
         self.reveal_button.grid_remove()
         self.bar.configure(value=0)
         self.status.configure(text="Reading audio...")
         self._busy(True)
-        threading.Thread(target=self._work, args=(self.audio,), daemon=True).start()
+        threading.Thread(
+            target=self._work, args=(self.audio, entry.background), daemon=True
+        ).start()
 
-    def _work(self, audio: Path) -> None:
+    def _work(self, audio: Path, background: Path) -> None:
         try:
-            background = config.background()
             duration, has_audio = media.probe(audio)
             if not has_audio:
                 self.events.put(("error", "That file has no audio track in it."))
