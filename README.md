@@ -1,20 +1,24 @@
 # Audio to Video
 
-A small Windows desktop app. Pick an image once, then turn any audio file into an
-MP4 that shows that image for the whole track — ready to upload to YouTube.
+A small Windows desktop app. Add one or more images, pick which one is active, then
+turn any audio file into an MP4 that shows the active image for the whole track —
+ready to upload to YouTube.
 
 Double-click `AudioToVideo.exe`, or drop an audio file straight onto it.
 
 ## Using it
 
-1. **Choose image...** — do this once. The app remembers it.
-2. **Choose audio...** — or drop an audio file onto the exe to skip this step.
-3. **Create video** — the MP4 lands next to the audio file, with the same name.
+1. **Add image...** — add as many as you like. The app remembers all of them.
+2. Pick one from the list — that's the image the next video will use.
+3. **Choose audio...** — or drop an audio file onto the exe to skip this step.
+4. **Create video** — the MP4 lands next to the audio file, with the same name.
+
+Use **Remove** to drop an image you no longer need from the list.
 
 An existing `song.mp4` is never overwritten; you get `song (2).mp4` instead.
 
-Your image is stored in `%APPDATA%\AudioToVideo`, not next to the exe, so it
-survives replacing the app with a newer build.
+Your images are stored in `%APPDATA%\AudioToVideo`, not next to the exe, so they
+survive replacing the app with a newer build.
 
 ## Framing
 
@@ -22,7 +26,7 @@ Output is always 1920x1080. The whole image is scaled to fit inside the frame an
 the leftover space is filled with a blurred, darkened copy of the same image, so a
 square or portrait picture looks deliberate rather than broken. Nothing is cropped.
 
-That frame is rendered **once**, when you pick the image — not on every conversion.
+That frame is rendered **once per image**, when you add it — not on every conversion.
 It is by far the most expensive step, and keeping it out of the per-video path is
 what makes conversions fast.
 
@@ -77,5 +81,5 @@ the filled edges look.
 | --- | --- |
 | `app.py` | The window. Runs conversions on a worker thread. |
 | `media.py` | Every ffmpeg call: probing, the background frame, encoding. |
-| `config.py` | Remembering the chosen image between runs. |
+| `config.py` | Remembering the added images and which one is selected. |
 | `build.py` | Packages it all into `dist\AudioToVideo\`. |
